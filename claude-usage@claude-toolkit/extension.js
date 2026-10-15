@@ -57,6 +57,7 @@ const PROVIDERS = {
         errors: {
             nocreds: '未找到 Claude Code 登录信息，请先在终端运行 claude 并登录',
             expired: '登录令牌已过期，使用一次 Claude Code 后会自动恢复',
+            network: '无法连接 api.anthropic.com，请检查网络或代理，稍后自动重试',
         },
     },
     codex: {
@@ -69,6 +70,7 @@ const PROVIDERS = {
             nocli: '未找到 codex 命令，请确认已安装 Codex CLI',
             nocreds: 'Codex 未登录，请在终端运行 codex login',
             timeout: 'Codex 响应超时，稍后自动重试',
+            network: '无法连接 chatgpt.com，请检查网络或代理，稍后自动重试',
             rpc: 'Codex 返回错误',
         },
     },
@@ -845,7 +847,12 @@ class CodexClient extends PollingClient {
                         readLine();
                         return;
                     }
-                    const kind = /auth|login|token|unauthori[sz]ed|credential/i.test(text) ? 'nocreds' : 'rpc';
+                    // network first: a failed request's message includes its URL (e.g. auth.openai.com)
+                    let kind = 'rpc';
+                    if (/error sending request|error trying to connect|connection (refused|reset|closed)|timed out|dns error|tls handshake/i.test(text))
+                        kind = 'network';
+                    else if (/auth|log(?:ged )?in|token|unauthori[sz]ed|credential/i.test(text))
+                        kind = 'nocreds';
                     finish(() => this._fail(kind, text.slice(0, 120)));
                     return;
                 }

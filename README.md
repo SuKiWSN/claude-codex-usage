@@ -85,6 +85,7 @@ journalctl --user -b -o cat /usr/bin/gnome-shell | grep claude-usage
 | --- | --- |
 | 登录令牌已过期 | 运行一次 `claude`，扩展会自动恢复 |
 | Codex 未登录 | 运行 `codex login` |
+| 无法连接 chatgpt.com / api.anthropic.com | 网络或代理问题，此时 `codex` / `claude` 本身也用不了。用 `curl -I https://chatgpt.com` 测试；用 Clash 等代理时检查该域名走的节点。恢复后自动更新，期间显示上次的数据 |
 | Codex 返回错误 | 多半是 `codex` 版本太旧，升级：`npm install -g @openai/codex` |
 | 装完后顶栏没变化 | 确认已注销重新登录；检查 `gnome-extensions info claude-usage@claude-toolkit` |
 
