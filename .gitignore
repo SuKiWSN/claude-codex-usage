@@ -1,0 +1,4 @@
+*.zip
+*.swp
+.vscode/
+.idea/

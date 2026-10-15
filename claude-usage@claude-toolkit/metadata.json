@@ -1,0 +1,13 @@
+{
+  "uuid": "claude-usage@claude-toolkit",
+  "name": "Claude & Codex Usage",
+  "description": "在顶栏日期右侧显示 Claude 与 Codex 订阅的 5 小时额度与每周额度。数据来自本机 Claude Code 登录信息和 Codex CLI。",
+  "shell-version": [
+    "45",
+    "46",
+    "47",
+    "48"
+  ],
+  "version": 2,
+  "url": "https://github.com/SuKiWSN/claude-codex-usage"
+}

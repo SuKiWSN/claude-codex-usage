@@ -1,0 +1,196 @@
+/* ---------- top bar ---------- */
+
+.claude-usage-panel {
+    spacing: 10px;
+}
+
+.claude-usage-group {
+    spacing: 5px;
+}
+
+.claude-usage-icon {
+    width: 13px;
+    height: 13px;
+}
+
+.claude-usage-ring {
+    width: 15px;
+    height: 15px;
+}
+
+.claude-usage-pills {
+    width: 34px;
+    height: 13px;
+}
+
+.claude-usage-pct {
+    font-size: 0.92em;
+    font-weight: 600;
+    font-feature-settings: "tnum";
+}
+
+/* ---------- popup ---------- */
+
+.claude-usage-menu {
+    min-width: 340px;
+}
+
+.claude-usage-item {
+    padding: 5px 14px;
+}
+
+.claude-usage-header {
+    spacing: 8px;
+    padding: 4px 2px 2px 2px;
+}
+
+.claude-usage-icon-lg {
+    width: 18px;
+    height: 18px;
+}
+
+.claude-usage-title {
+    font-size: 1.08em;
+    font-weight: 800;
+}
+
+.claude-usage-badge {
+    font-size: 0.76em;
+    font-weight: 700;
+    padding: 2px 9px;
+    border-radius: 99px;
+    color: #e2876a;
+    background-color: rgba(217, 119, 87, 0.16);
+}
+
+.claude-usage-status {
+    font-size: 0.86em;
+    color: #e8706b;
+    padding: 0 2px;
+}
+
+.claude-usage-card {
+    spacing: 14px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background-color: rgba(128, 128, 128, 0.11);
+}
+
+.claude-usage-card-week {
+    spacing: 5px;
+}
+
+.claude-usage-card-head {
+    spacing: 7px;
+}
+
+.claude-usage-card-text {
+    spacing: 4px;
+}
+
+.claude-usage-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+}
+
+.claude-usage-card-title {
+    font-weight: 700;
+}
+
+.claude-usage-caption {
+    font-size: 0.8em;
+}
+
+.claude-usage-ring-lg {
+    width: 64px;
+    height: 64px;
+}
+
+.claude-usage-ring-pct {
+    font-size: 1.1em;
+    font-weight: 800;
+    font-feature-settings: "tnum";
+}
+
+.claude-usage-big {
+    font-size: 1.3em;
+    font-weight: 800;
+    font-feature-settings: "tnum";
+}
+
+.claude-usage-cells {
+    height: 25px;
+    margin: 2px 0 4px 0;
+}
+
+.claude-usage-line {
+    font-size: 0.88em;
+    font-feature-settings: "tnum";
+}
+
+.claude-usage-models {
+    spacing: 6px;
+    padding-top: 6px;
+}
+
+.claude-usage-model-row {
+    spacing: 10px;
+}
+
+.claude-usage-model-name {
+    font-size: 0.84em;
+    min-width: 76px;
+}
+
+.claude-usage-bar {
+    height: 6px;
+}
+
+.claude-usage-model-pct {
+    font-size: 0.84em;
+    font-weight: 700;
+    min-width: 34px;
+    text-align: right;
+    font-feature-settings: "tnum";
+}
+
+.claude-usage-footer {
+    spacing: 8px;
+    padding: 2px 0 2px 2px;
+}
+
+.claude-usage-updated {
+    font-size: 0.82em;
+}
+
+.claude-usage-btn {
+    padding: 5px 14px;
+    border-radius: 99px;
+    font-size: 0.86em;
+    font-weight: 700;
+    background-color: rgba(128, 128, 128, 0.16);
+}
+
+.claude-usage-btn:hover,
+.claude-usage-btn:focus {
+    background-color: rgba(128, 128, 128, 0.28);
+}
+
+.claude-usage-btn:active {
+    background-color: rgba(128, 128, 128, 0.36);
+}
+
+.claude-usage-btn.accent {
+    color: #ffffff;
+    background-color: #d97757;
+}
+
+.claude-usage-btn.accent:hover,
+.claude-usage-btn.accent:focus {
+    background-color: #e3896b;
+}
+
+.claude-usage-btn.accent:active {
+    background-color: #c4664a;
+}
