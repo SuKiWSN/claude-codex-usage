@@ -6,8 +6,8 @@
 //
 // Claude: the endpoint Claude Code's /usage uses, authenticated with the OAuth token
 // Claude Code keeps in ~/.claude/.credentials.json. The file is only read, never
-// written: when the token expires, using Claude Code refreshes it and the indicator
-// picks the new one up automatically.
+// written: when the token is about to expire, a background `claude -p /cost` has
+// Claude Code renew it, and the indicator picks the new one up.
 //
 // Codex: `account/rateLimits/read` on a short-lived `codex app-server` (JSON-RPC over
 // stdio), so the Codex CLI itself handles login and token refresh.
@@ -29,12 +29,17 @@ const CLAUDE_DIR = GLib.build_filenamev([GLib.get_home_dir(), '.claude']);
 const CLAUDE_CREDENTIALS = '.credentials.json';
 const CACHE_DIR = GLib.build_filenamev([GLib.get_user_cache_dir(), 'claude-usage-indicator']);
 
-const POLL_SECONDS = 300;
+const POLL_SECONDS = 120;
 const MAX_BACKOFF_SECONDS = 1800;
 const MIN_GAP_SECONDS = 20;
 const STALE_ON_OPEN_SECONDS = 60;
 const STALE_SECONDS = 15 * 60;
 const CODEX_TIMEOUT_SECONDS = 45;
+// Claude Code renews tokens that expire within 5 minutes
+const CLAUDE_RENEW_MARGIN_MS = 5 * 60 * 1000;
+const CLAUDE_RENEW_RETRY_SECONDS = 10 * 60;
+// well past Claude Code's own 30 s limit on the token request
+const CLAUDE_RENEW_TIMEOUT_SECONDS = 120;
 const SESSION_SECONDS = 5 * 3600;
 const WEEK_SECONDS = 7 * 86400;
 
@@ -56,7 +61,7 @@ const PROVIDERS = {
         usageUrl: 'https://claude.ai/settings/usage',
         errors: {
             nocreds: '未找到 Claude Code 登录信息，请先在终端运行 claude 并登录',
-            expired: '登录令牌已过期，使用一次 Claude Code 后会自动恢复',
+            expired: '登录令牌已过期且自动续期没有成功，请在终端运行一次 claude',
             network: '无法连接 api.anthropic.com，请检查网络或代理，稍后自动重试',
         },
     },
@@ -167,8 +172,14 @@ function readClaudeCredentials() {
         const oauth = JSON.parse(new TextDecoder().decode(bytes))?.claudeAiOauth;
         if (!oauth?.accessToken)
             return {};
-        const expired = typeof oauth.expiresAt === 'number' && oauth.expiresAt < Date.now();
-        return {token: expired ? null : oauth.accessToken, expired, plan: claudePlan(oauth)};
+        const left = typeof oauth.expiresAt === 'number' ? oauth.expiresAt - Date.now() : Infinity;
+        const expired = left < 0;
+        return {
+            token: expired ? null : oauth.accessToken,
+            expired,
+            expiring: left < CLAUDE_RENEW_MARGIN_MS,
+            plan: claudePlan(oauth),
+        };
     } catch {
         return {};
     }
@@ -246,9 +257,9 @@ function parseCodex(raw) {
 
 // GNOME Shell's PATH usually lacks per-user installs (nvm, ~/.local/bin, …) but may
 // contain /snap/bin. Prefer per-user installs — what an interactive terminal runs —
-// over system-wide ones, and snap last: a snap codex is often an older build with
-// its own, separate login.
-function findCodex() {
+// over system-wide ones, and snap last: a snap build is often older, with its own,
+// separate login.
+function findCli(name) {
     const home = GLib.get_home_dir();
     const candidates = [];
     try {
@@ -260,14 +271,14 @@ function findCodex() {
         iter.close(null);
         versions.sort((a, b) => b.localeCompare(a, undefined, {numeric: true}));
         for (const v of versions)
-            candidates.push(GLib.build_filenamev([nvm.get_path(), v, 'bin', 'codex']));
+            candidates.push(GLib.build_filenamev([nvm.get_path(), v, 'bin', name]));
     } catch {}
-    for (const dir of ['.local/bin', '.npm-global/bin', '.volta/bin', '.bun/bin', '.cargo/bin'])
-        candidates.push(GLib.build_filenamev([home, dir, 'codex']));
-    const inPath = GLib.find_program_in_path('codex');
+    for (const dir of ['.local/bin', '.claude/local', '.npm-global/bin', '.volta/bin', '.bun/bin', '.cargo/bin'])
+        candidates.push(GLib.build_filenamev([home, dir, name]));
+    const inPath = GLib.find_program_in_path(name);
     if (inPath && !inPath.startsWith('/snap/'))
         candidates.push(inPath);
-    candidates.push('/usr/local/bin/codex', '/usr/bin/codex', '/snap/bin/codex');
+    candidates.push(`/usr/local/bin/${name}`, `/usr/bin/${name}`, `/snap/bin/${name}`);
     return candidates.find(p => p && GLib.file_test(p, GLib.FileTest.IS_EXECUTABLE)) ?? null;
 }
 
@@ -656,6 +667,9 @@ class ClaudeClient extends PollingClient {
         super('claude', 'usage.json');
         this._http = new Soup.Session({timeout: 20, user_agent: 'claude-usage-indicator/1.0'});
         this._debounceId = 0;
+        this._renewProc = null;
+        this._renewTimeoutId = 0;
+        this._lastRenew = 0;
         this._watchCredentials();
         this.start();
     }
@@ -668,6 +682,8 @@ class ClaudeClient extends PollingClient {
         const creds = readClaudeCredentials();
         if (creds.plan)
             this.state.plan = creds.plan;
+        if (creds.expiring && this._renewToken())
+            return;
         if (!creds.token) {
             this._fail(creds.expired ? 'expired' : 'nocreds');
             return;
@@ -688,6 +704,9 @@ class ClaudeClient extends PollingClient {
                 return;
             }
             const status = msg.get_status();
+            // a token revoked early: Claude Code's own lookups get the 401 too and renew it
+            if (status === 401 && this._renewToken())
+                return;
             if (status === 401 || status === 403) {
                 this._fail('expired');
                 return;
@@ -706,6 +725,63 @@ class ClaudeClient extends PollingClient {
             } catch {}
             this._succeed(raw);
         });
+    }
+
+    // Any `claude` run first renews a token that is (nearly) expired, under the lock
+    // Claude Code instances share, and writes it back to the credentials file.
+    // `-p /cost` is a local command: no model request, so no usage spent. Its account
+    // lookups wait for the renewal, which keeps it from exiting halfway through one;
+    // CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC would skip them, so the switches it
+    // bundles are set one by one instead. Returns true if a run started; _fetch()
+    // runs again when it ends.
+    _renewToken() {
+        const now = Date.now() / 1000;
+        if (this._renewProc || now - this._lastRenew < CLAUDE_RENEW_RETRY_SECONDS)
+            return false;
+        const claude = findCli('claude');
+        if (!claude)
+            return false;
+        this._lastRenew = now;
+
+        let proc;
+        try {
+            const launcher = new Gio.SubprocessLauncher({
+                flags: Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_SILENCE |
+                    Gio.SubprocessFlags.STDERR_SILENCE,
+            });
+            launcher.set_cwd(GLib.get_home_dir());
+            launcher.setenv('PATH', `${GLib.path_get_dirname(claude)}:${GLib.getenv('PATH') ?? '/usr/bin:/bin'}`, true);
+            launcher.unsetenv('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC');
+            for (const name of ['DISABLE_TELEMETRY', 'DISABLE_ERROR_REPORTING', 'DISABLE_AUTOUPDATER', 'DISABLE_BUG_COMMAND'])
+                launcher.setenv(name, '1', true);
+            proc = launcher.spawnv([claude, '-p', '/cost', '--no-session-persistence',
+                '--strict-mcp-config', '--settings', '{"disableAllHooks":true}']);
+            proc.get_stdin_pipe().close(null);
+        } catch (e) {
+            console.warn(`claude-usage: cannot run ${claude}: ${e.message}`);
+            return false;
+        }
+        this._renewProc = proc;
+        this._renewTimeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, CLAUDE_RENEW_TIMEOUT_SECONDS, () => {
+            this._renewTimeoutId = 0;
+            proc.send_signal(15);
+            return GLib.SOURCE_REMOVE;
+        });
+        proc.wait_async(this._cancellable, (p, res) => {
+            try {
+                p.wait_finish(res);
+            } catch {
+                return; // disabled meanwhile: let it finish on its own
+            }
+            if (this._renewTimeoutId)
+                GLib.source_remove(this._renewTimeoutId);
+            this._renewTimeoutId = 0;
+            this._renewProc = null;
+            if (readClaudeCredentials().expiring)
+                console.warn(`claude-usage: ${claude} did not renew the Claude token (exit status ${p.get_exit_status()})`);
+            this._fetch();
+        });
+        return true;
     }
 
     // Claude Code rewrites the credentials file when it refreshes its token.
@@ -738,6 +814,11 @@ class ClaudeClient extends PollingClient {
         if (this._debounceId)
             GLib.source_remove(this._debounceId);
         this._debounceId = 0;
+        // a running renewal is left to finish: stopping it midway could lose the new token
+        if (this._renewTimeoutId)
+            GLib.source_remove(this._renewTimeoutId);
+        this._renewTimeoutId = 0;
+        this._renewProc = null;
         this._monitor?.cancel();
         this._monitor = null;
     }
@@ -758,7 +839,7 @@ class CodexClient extends PollingClient {
     // Spawn `codex app-server`, send initialize + account/rateLimits/read in one go,
     // read stdout until the reply arrives, then close stdin (the server exits on EOF).
     _fetch() {
-        const codex = findCodex();
+        const codex = findCli('codex');
         if (!codex) {
             this._fail('nocli');
             return;

@@ -157,16 +157,17 @@ enable_extension() {
 }
 
 # Same search order as the extension: per-user installs first, snap last.
-find_codex() {
+find_cli() {
+    local name=$1
     local -a candidates nvm
-    mapfile -t nvm < <(printf '%s\n' "$HOME"/.nvm/versions/node/*/bin/codex | sort -rV)
+    mapfile -t nvm < <(printf '%s\n' "$HOME"/.nvm/versions/node/*/bin/"$name" | sort -rV)
     candidates=("${nvm[@]}")
-    candidates+=("$HOME/.local/bin/codex" "$HOME/.npm-global/bin/codex" "$HOME/.volta/bin/codex"
-        "$HOME/.bun/bin/codex" "$HOME/.cargo/bin/codex")
+    candidates+=("$HOME/.local/bin/$name" "$HOME/.claude/local/$name" "$HOME/.npm-global/bin/$name"
+        "$HOME/.volta/bin/$name" "$HOME/.bun/bin/$name" "$HOME/.cargo/bin/$name")
     local in_path
-    in_path=$(command -v codex 2>/dev/null || true)
+    in_path=$(command -v "$name" 2>/dev/null || true)
     [[ $in_path == /snap/* ]] || candidates+=("$in_path")
-    candidates+=(/usr/local/bin/codex /usr/bin/codex /snap/bin/codex)
+    candidates+=("/usr/local/bin/$name" "/usr/bin/$name" "/snap/bin/$name")
     local c
     for c in "${candidates[@]}"; do
         if [[ -n $c && -x $c ]]; then
@@ -182,8 +183,15 @@ report_sources() {
     else
         warn "Claude：没找到 ~/.claude/.credentials.json。安装 Claude Code 并运行 claude 登录后会自动显示。"
     fi
+    local claude
+    claude=$(find_cli claude)
+    if [[ -n $claude ]]; then
+        info "Claude：令牌快过期时会用 $claude 自动续期"
+    else
+        warn "Claude：没找到 claude 命令，无法自动续期登录令牌；令牌过期后需要手动运行一次 claude。"
+    fi
     local codex version
-    codex=$(find_codex)
+    codex=$(find_cli codex)
     if [[ -n $codex ]]; then
         version=$(PATH="$(dirname -- "$codex"):$PATH" timeout 20 "$codex" --version 2>/dev/null | head -n1 || true)
         info "Codex：将使用 $codex${version:+（$version）}"
