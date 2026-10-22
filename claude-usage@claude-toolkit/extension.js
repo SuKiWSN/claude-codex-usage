@@ -703,7 +703,9 @@ class ClaudeClient extends PollingClient {
                     this._fail('network', e.message);
                 return;
             }
-            const status = msg.get_status();
+            // status_code, not get_status(): GJS throws on codes Soup.Status lacks (429),
+            // which would leave _inFlight set and stop all further polling
+            const status = msg.status_code;
             // a token revoked early: Claude Code's own lookups get the 401 too and renew it
             if (status === 401 && this._renewToken())
                 return;
