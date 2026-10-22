@@ -29,7 +29,7 @@ const CLAUDE_DIR = GLib.build_filenamev([GLib.get_home_dir(), '.claude']);
 const CLAUDE_CREDENTIALS = '.credentials.json';
 const CACHE_DIR = GLib.build_filenamev([GLib.get_user_cache_dir(), 'claude-usage-indicator']);
 
-const POLL_SECONDS = 120;
+const POLL_SECONDS = 240;
 const MAX_BACKOFF_SECONDS = 1800;
 const MIN_GAP_SECONDS = 20;
 const STALE_ON_OPEN_SECONDS = 60;
